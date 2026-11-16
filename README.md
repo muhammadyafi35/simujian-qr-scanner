@@ -1,0 +1,1 @@
+# simujian-qr-scanner
