@@ -165,16 +165,25 @@
 
       try {
 
-        const cameras = await Html5Qrcode.getCameras();
-
-        if (!cameras || cameras.length === 0) {
-          throw new Error("Kamera tidak ditemukan.");
-        }
-
         scanner = new Html5Qrcode("qr-reader");
 
-        await scanner.start(
-          cameras[0].id,
+await scanner.start(
+  { facingMode: "environment" },
+  {
+    fps: 10,
+    qrbox: { width: 250, height: 250 }
+  },
+  async function(decodedText) {
+    if (!sedangMemindai) return;
+
+    document.getElementById("qrValue").textContent = decodedText;
+    document.getElementById("scanResult").style.display = "block";
+
+    message.textContent = "QR Code berhasil dibaca.";
+    await hentikanScanner();
+  },
+  function(errorMessage) {}
+);
           {
             fps: 10,
             qrbox: {
