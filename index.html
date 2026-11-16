@@ -1,4 +1,3 @@
-
 <!DOCTYPE html>
 <html lang="id">
 <head>
@@ -52,7 +51,20 @@
       color: #64748b;
       font-size: 13px;
       line-height: 1.6;
-      margin-bottom: 22px;
+      margin-bottom: 15px;
+    }
+
+    #roomInfo {
+      display: none;
+      background: #ecfdf5;
+      border: 1px solid #a7f3d0;
+      color: #065f46;
+      padding: 12px;
+      border-radius: 9px;
+      text-align: center;
+      font-size: 13px;
+      margin-bottom: 15px;
+      line-height: 1.6;
     }
 
     #qr-reader {
@@ -73,7 +85,7 @@
       border-radius: 9px;
       font-size: 13px;
       text-align: center;
-      line-height: 1.5;
+      line-height: 1.6;
     }
 
     .camera-select {
@@ -110,17 +122,33 @@
 
     #scanResult {
       display: none;
-      padding: 14px;
+      padding: 15px;
       margin-top: 15px;
       border-radius: 10px;
-      background: #dcfce7;
-      border: 1px solid #86efac;
+      background: #f1f5f9;
+      border: 1px solid #cbd5e1;
       overflow-wrap: anywhere;
     }
 
-    #qrValue {
+    #scanResult.success {
+      background: #dcfce7;
+      border-color: #86efac;
+    }
+
+    #scanResult.error {
+      background: #fee2e2;
+      border-color: #fca5a5;
+    }
+
+    #scanStudentName {
+      font-size: 17px;
+      font-weight: bold;
+      margin: 12px 0 5px;
+    }
+
+    #scanDetails {
       font-size: 13px;
-      line-height: 1.5;
+      line-height: 1.7;
     }
 
     .footer {
@@ -146,256 +174,607 @@
 
 <body>
 
-  <main class="container">
+<main class="container">
 
-    <div class="logo">📷</div>
+  <div class="logo">📷</div>
 
-    <h2>SIMUJIAN QR</h2>
+  <h2>SIMUJIAN QR</h2>
 
-    <p class="subtitle">
-      Scanner Absensi Siswa<br>
-      SMK Ma'arif NU Jatirejo
-    </p>
+  <p class="subtitle">
+    Scanner Absensi Siswa<br>
+    SMK Ma'arif NU Jatirejo
+  </p>
 
-    <select id="cameraSelect" class="camera-select" disabled>
-      <option>Kamera akan dideteksi setelah izin diberikan</option>
-    </select>
+  <div id="roomInfo">
+    Menunggu informasi jadwal pengawasan...
+  </div>
 
-    <div id="qr-reader"></div>
+  <select id="cameraSelect" class="camera-select" disabled>
+    <option>Kamera belum dideteksi</option>
+  </select>
 
-    <div id="scannerMessage">
-      Scanner belum diaktifkan.
-    </div>
+  <div id="qr-reader"></div>
 
-    <button id="startButton" onclick="mulaiScanner()">
-      Aktifkan Kamera
+  <div id="scannerMessage">
+    Menghubungkan dengan Dashboard Guru...
+  </div>
+
+  <button id="startButton" onclick="mulaiScanner()" disabled>
+    Aktifkan Kamera
+  </button>
+
+  <button id="stopButton" onclick="hentikanScanner()" disabled>
+    Hentikan Kamera
+  </button>
+
+  <div id="scanResult">
+
+    <strong id="resultHeading">Hasil Pemindaian</strong>
+
+    <p id="scanStudentName">-</p>
+
+    <div id="scanDetails"></div>
+
+    <button id="nextButton" onclick="scanBerikutnya()">
+      Scan QR Berikutnya
     </button>
 
-    <button id="stopButton" onclick="hentikanScanner()" disabled>
-      Hentikan Kamera
-    </button>
+  </div>
 
-    <div id="scanResult">
-      <strong>✓ QR Berhasil Dibaca</strong>
-      <p id="qrValue"></p>
-      <button onclick="scanBerikutnya()">
-        Scan QR Berikutnya
-      </button>
-    </div>
+  <div class="footer">
+    SIMUJIAN QR Scanner
+  </div>
 
-    <div class="footer">
-      SIMUJIAN QR Scanner
-    </div>
+</main>
 
-  </main>
 
-  <script>
-    let scanner = null;
-    let sedangMemindai = false;
-    let daftarKamera = [];
-    let kameraAktif = null;
-    let sedangMemproses = false;
+<script>
 
-    const message = document.getElementById("scannerMessage");
-    const startButton = document.getElementById("startButton");
-    const stopButton = document.getElementById("stopButton");
-    const cameraSelect = document.getElementById("cameraSelect");
+  /* =====================================
+     SIMUJIAN QR - STATUS APLIKASI
+     ===================================== */
 
-    async function mulaiScanner(cameraId = null) {
+  let scanner = null;
+  let sedangMemindai = false;
+  let sedangMemproses = false;
+  let daftarKamera = [];
+  let kameraAktif = null;
 
-      if (sedangMemindai) return;
+  let dashboardWindow = null;
+  let dashboardOrigin = null;
 
-      if (typeof Html5Qrcode === "undefined") {
-        message.textContent = "Library QR Scanner gagal dimuat.";
+  let dashboardTerhubung = false;
+
+  let dataJadwal = {
+    idJadwal: "",
+    idRuang: "",
+    namaRuang: ""
+  };
+
+  const message =
+    document.getElementById("scannerMessage");
+
+  const startButton =
+    document.getElementById("startButton");
+
+  const stopButton =
+    document.getElementById("stopButton");
+
+  const cameraSelect =
+    document.getElementById("cameraSelect");
+
+  const scanResult =
+    document.getElementById("scanResult");
+
+
+  /* =====================================
+     KOMUNIKASI DENGAN DASHBOARD
+     ===================================== */
+
+  function kirimKeDashboard(data) {
+
+    if (
+      !dashboardWindow ||
+      !dashboardOrigin
+    ) {
+      console.error("Dashboard belum terhubung.");
+      return false;
+    }
+
+    dashboardWindow.postMessage(
+      data,
+      dashboardOrigin
+    );
+
+    return true;
+  }
+
+
+  // Menerima pesan dari Dashboard Guru
+  window.addEventListener("message", function(event) {
+
+    // Hanya menerima pesan dari tab pembuka
+    if (!window.opener || event.source !== window.opener) {
+      return;
+    }
+
+    const data = event.data;
+
+    if (!data || !data.type) {
+      return;
+    }
+
+
+    // Dashboard mengirim konfigurasi awal
+    if (data.type === "SIMUJIAN_SCANNER_INIT") {
+
+      dashboardWindow = event.source;
+      dashboardOrigin = event.origin;
+
+      dataJadwal.idJadwal = String(data.idJadwal || "");
+      dataJadwal.idRuang = String(data.idRuang || "");
+      dataJadwal.namaRuang = String(data.namaRuang || "");
+
+      if (
+        !dataJadwal.idJadwal ||
+        !dataJadwal.idRuang
+      ) {
+        message.textContent =
+          "Informasi jadwal atau ruang tidak valid.";
+
         return;
       }
 
-      if (!navigator.mediaDevices?.getUserMedia) {
-        message.textContent = "Browser tidak mendukung akses kamera.";
-        return;
+      dashboardTerhubung = true;
+
+      document.getElementById("roomInfo").style.display =
+        "block";
+
+      document.getElementById("roomInfo").textContent =
+        "Jadwal: " + dataJadwal.idJadwal +
+        " | Ruang: " + dataJadwal.namaRuang;
+
+      startButton.disabled = false;
+
+      message.textContent =
+        "Dashboard terhubung. Silakan aktifkan kamera.";
+
+      console.log("Dashboard berhasil terhubung.");
+      return;
+    }
+
+
+    // Dashboard mengirim hasil validasi QR
+    if (
+      data.type === "SIMUJIAN_SCAN_RESULT" &&
+      dashboardWindow === event.source &&
+      dashboardOrigin === event.origin
+    ) {
+
+      tampilkanHasilValidasi(data);
+
+    }
+
+  });
+
+
+  // Beritahu dashboard bahwa scanner sudah siap.
+  // Pesan ini tidak membawa token atau data siswa.
+  if (window.opener) {
+
+    window.opener.postMessage(
+      {
+        type: "SIMUJIAN_SCANNER_READY"
+      },
+      "*"
+    );
+
+  } else {
+
+    message.textContent =
+      "Scanner harus dibuka melalui Dashboard Guru SIMUJIAN.";
+
+  }
+
+
+  /* =====================================
+     AKTIVASI KAMERA
+     ===================================== */
+
+  async function mulaiScanner(cameraId = null) {
+
+    if (!dashboardTerhubung) {
+      message.textContent =
+        "Dashboard Guru belum terhubung.";
+
+      return;
+    }
+
+    if (sedangMemindai || sedangMemproses) return;
+
+    if (typeof Html5Qrcode === "undefined") {
+
+      message.textContent =
+        "Library QR Scanner gagal dimuat.";
+
+      return;
+    }
+
+    if (!navigator.mediaDevices?.getUserMedia) {
+
+      message.textContent =
+        "Browser tidak mendukung akses kamera.";
+
+      return;
+    }
+
+    startButton.disabled = true;
+
+    message.textContent = "Memeriksa kamera...";
+
+    try {
+
+      if (!scanner) {
+        scanner = new Html5Qrcode("qr-reader");
       }
 
-      startButton.disabled = true;
-      message.textContent = "Memeriksa kamera...";
+      const config = {
+        fps: 10,
 
-      try {
+        qrbox: function(viewfinderWidth, viewfinderHeight) {
 
-        if (!scanner) {
-          scanner = new Html5Qrcode("qr-reader");
-        }
+          const ukuran = Math.min(
+            viewfinderWidth,
+            viewfinderHeight,
+            280
+          );
 
-        const config = {
-          fps: 10,
-          qrbox: function(viewfinderWidth, viewfinderHeight) {
-            const ukuran = Math.min(
-              viewfinderWidth,
-              viewfinderHeight,
-              280
-            );
+          return {
+            width: ukuran,
+            height: ukuran
+          };
 
-            return {
-              width: ukuran,
-              height: ukuran
-            };
-          },
-          aspectRatio: 1
+        },
+
+        aspectRatio: 1
+      };
+
+
+      // Gunakan kamera yang dipilih
+      if (cameraId) {
+
+        kameraAktif = cameraId;
+
+        await scanner.start(
+          cameraId,
+          config,
+          qrBerhasil,
+          function() {}
+        );
+
+      } else {
+
+        // Prioritaskan kamera belakang HP
+        kameraAktif = {
+          facingMode: "environment"
         };
 
-        if (cameraId) {
-          kameraAktif = cameraId;
-
-          await scanner.start(
-            cameraId,
-            config,
-            qrBerhasil,
-            function() {}
-          );
-
-        } else {
-
-          // Prioritaskan kamera belakang pada HP
-          kameraAktif = { facingMode: "environment" };
-
-          await scanner.start(
-            kameraAktif,
-            config,
-            qrBerhasil,
-            function() {}
-          );
-        }
-
-        sedangMemindai = true;
-
-        stopButton.disabled = false;
-        cameraSelect.disabled = false;
-
-        message.textContent =
-          "Kamera aktif. Arahkan QR Code ke kamera.";
-
-        // Ambil daftar kamera setelah izin diberikan
-        await muatDaftarKamera();
-
-      } catch(error) {
-
-        console.error("Scanner error:", error);
-
-        sedangMemindai = false;
-        startButton.disabled = false;
-        stopButton.disabled = true;
-
-        message.textContent =
-          "Gagal mengaktifkan kamera: " +
-          (error.name || "Error") + " - " + error.message;
-      }
-    }
-
-    async function muatDaftarKamera() {
-
-      try {
-
-        daftarKamera = await Html5Qrcode.getCameras();
-
-        cameraSelect.innerHTML = "";
-
-        daftarKamera.forEach((kamera, index) => {
-
-          const option = document.createElement("option");
-
-          option.value = kamera.id;
-          option.textContent =
-            kamera.label || "Kamera " + (index + 1);
-
-          cameraSelect.appendChild(option);
-
-        });
-
-        if (kameraAktif && typeof kameraAktif === "string") {
-          cameraSelect.value = kameraAktif;
-        } else {
-          // Tetap memilih kamera belakang yang sedang digunakan
-          cameraSelect.selectedIndex = 0;
-        }
-
-      } catch(error) {
-        console.warn("Daftar kamera tidak tersedia:", error);
-      }
-    }
-
-    async function gantiKamera() {
-
-      const cameraId = cameraSelect.value;
-
-      if (!cameraId || !sedangMemindai) return;
-
-      try {
-
-        message.textContent = "Mengganti kamera...";
-
-        await scanner.stop();
-
-        sedangMemindai = false;
-
-        await mulaiScanner(cameraId);
-
-      } catch(error) {
-
-        console.error("Ganti kamera gagal:", error);
-
-        message.textContent = "Gagal mengganti kamera.";
+        await scanner.start(
+          kameraAktif,
+          config,
+          qrBerhasil,
+          function() {}
+        );
 
       }
-    }
 
-    cameraSelect.addEventListener("change", gantiKamera);
 
-    async function qrBerhasil(decodedText) {
+      sedangMemindai = true;
 
-      if (!sedangMemindai || sedangMemproses) return;
+      stopButton.disabled = false;
+      cameraSelect.disabled = false;
 
-      sedangMemproses = true;
+      message.textContent =
+        "Kamera aktif. Arahkan QR Code siswa.";
 
-      document.getElementById("qrValue").textContent = decodedText;
+      await muatDaftarKamera();
 
-      document.getElementById("scanResult").style.display = "block";
+    } catch(error) {
 
-      message.textContent = "QR Code berhasil dibaca.";
-
-      await hentikanScanner();
-    }
-
-    async function hentikanScanner() {
-
-      if (scanner && scanner.isScanning) {
-
-        try {
-          await scanner.stop();
-        } catch(error) {
-          console.error("Gagal menghentikan kamera:", error);
-        }
-      }
+      console.error("Scanner error:", error);
 
       sedangMemindai = false;
 
       startButton.disabled = false;
       stopButton.disabled = true;
 
-      message.textContent = "Kamera dihentikan.";
+      message.textContent =
+        "Gagal mengaktifkan kamera: " +
+        (error.name || "Error") +
+        " - " + error.message;
+
     }
 
-    function scanBerikutnya() {
+  }
 
-      document.getElementById("scanResult").style.display = "none";
 
-      document.getElementById("qrValue").textContent = "";
+  /* =====================================
+     DAFTAR KAMERA
+     ===================================== */
+
+  async function muatDaftarKamera() {
+
+    try {
+
+      daftarKamera = await Html5Qrcode.getCameras();
+
+      cameraSelect.innerHTML = "";
+
+      daftarKamera.forEach((kamera, index) => {
+
+        const option = document.createElement("option");
+
+        option.value = kamera.id;
+
+        option.textContent =
+          kamera.label || "Kamera " + (index + 1);
+
+        cameraSelect.appendChild(option);
+
+      });
+
+
+      if (
+        kameraAktif &&
+        typeof kameraAktif === "string"
+      ) {
+
+        cameraSelect.value = kameraAktif;
+
+      } else {
+
+        // Pilih label kamera belakang bila tersedia
+        const kameraBelakang = daftarKamera.find(
+          kamera =>
+            /back|rear|environment/i.test(kamera.label)
+        );
+
+        if (kameraBelakang) {
+          cameraSelect.value = kameraBelakang.id;
+        }
+
+      }
+
+    } catch(error) {
+
+      console.warn(
+        "Daftar kamera tidak tersedia:",
+        error
+      );
+
+    }
+
+  }
+
+
+  async function gantiKamera() {
+
+    const cameraId = cameraSelect.value;
+
+    if (!cameraId || !sedangMemindai) return;
+
+    try {
+
+      message.textContent = "Mengganti kamera...";
+
+      await hentikanScanner(false);
+
+      await mulaiScanner(cameraId);
+
+    } catch(error) {
+
+      console.error("Ganti kamera gagal:", error);
+
+      message.textContent =
+        "Gagal mengganti kamera.";
+
+    }
+
+  }
+
+
+  cameraSelect.addEventListener(
+    "change",
+    gantiKamera
+  );
+
+
+  /* =====================================
+     MEMBACA QR SISWA
+     ===================================== */
+
+  async function qrBerhasil(decodedText) {
+
+    if (
+      !sedangMemindai ||
+      sedangMemproses
+    ) return;
+
+    sedangMemproses = true;
+
+    // Hentikan kamera sebelum mengirim QR
+    await hentikanScanner(false);
+
+    scanResult.style.display = "none";
+
+    message.textContent =
+      "QR terbaca. Mengirim data untuk validasi...";
+
+
+    // Kirim token QR ke Dashboard Guru
+    const terkirim = kirimKeDashboard({
+
+      type: "SIMUJIAN_QR_DECODED",
+
+      tokenQR: decodedText
+
+    });
+
+
+    if (!terkirim) {
 
       sedangMemproses = false;
 
-      mulaiScanner(
-        typeof kameraAktif === "string" ? kameraAktif : null
-      );
+      message.textContent =
+        "Gagal terhubung dengan Dashboard Guru.";
+
+      return;
     }
 
-  </script>
+    message.textContent =
+      "QR diterima. Menunggu hasil validasi server...";
+
+  }
+
+
+  /* =====================================
+     HASIL VALIDASI DARI APPS SCRIPT
+     ===================================== */
+
+  function tampilkanHasilValidasi(data) {
+
+    scanResult.style.display = "block";
+
+    if (data.success) {
+
+      scanResult.className = "success";
+
+      document.getElementById("resultHeading").textContent =
+        "✓ ABSENSI BERHASIL";
+
+      const siswa = data.siswa || {};
+
+      document.getElementById("scanStudentName").textContent =
+        siswa.nama || "Nama tidak tersedia";
+
+      document.getElementById("scanDetails").textContent =
+        "Kelas: " + (siswa.kelas || "-") +
+        "\nWaktu: " + (data.waktuScan || "-") +
+        "\nStatus: " + (data.status || "HADIR") +
+        "\n" + (data.message || "Absensi berhasil dicatat.");
+
+      message.textContent =
+        "Validasi berhasil. Siswa tercatat hadir.";
+
+    } else {
+
+      scanResult.className = "error";
+
+      document.getElementById("resultHeading").textContent =
+        "✕ ABSENSI TIDAK BERHASIL";
+
+      document.getElementById("scanStudentName").textContent =
+        "Validasi gagal";
+
+      document.getElementById("scanDetails").textContent =
+        data.message || "QR tidak dapat diproses.";
+
+      message.textContent =
+        "QR gagal divalidasi. Periksa informasi siswa.";
+
+    }
+
+    sedangMemproses = false;
+
+    startButton.disabled = false;
+    stopButton.disabled = true;
+
+  }
+
+
+  /* =====================================
+     HENTIKAN KAMERA
+     ===================================== */
+
+  async function hentikanScanner(tampilkanPesan = true) {
+
+    if (scanner && scanner.isScanning) {
+
+      try {
+
+        await scanner.stop();
+
+      } catch(error) {
+
+        console.error(
+          "Gagal menghentikan kamera:",
+          error
+        );
+
+      }
+
+    }
+
+    sedangMemindai = false;
+
+    startButton.disabled = false;
+    stopButton.disabled = true;
+
+    if (tampilkanPesan) {
+
+      message.textContent =
+        "Kamera dihentikan.";
+
+    }
+
+  }
+
+
+  /* =====================================
+     SCAN SISWA BERIKUTNYA
+     ===================================== */
+
+  function scanBerikutnya() {
+
+    scanResult.style.display = "none";
+
+    document.getElementById("scanStudentName").textContent =
+      "-";
+
+    document.getElementById("scanDetails").textContent =
+      "";
+
+    sedangMemproses = false;
+
+    message.textContent =
+      "Siap memindai siswa berikutnya.";
+
+    mulaiScanner(
+      typeof kameraAktif === "string"
+        ? kameraAktif
+        : null
+    );
+
+  }
+
+
+  /* =====================================
+     PENUTUPAN HALAMAN
+     ===================================== */
+
+  window.addEventListener("beforeunload", function() {
+
+    if (scanner && scanner.isScanning) {
+
+      scanner.stop().catch(function(error) {
+        console.warn(error);
+      });
+
+    }
+
+  });
+
+</script>
 
 </body>
 </html>
