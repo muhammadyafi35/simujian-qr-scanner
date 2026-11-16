@@ -1,0 +1,241 @@
+
+<!DOCTYPE html>
+<html lang="id">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>SIMUJIAN QR Scanner</title>
+
+  <script src="https://unpkg.com/html5-qrcode@2.3.8/html5-qrcode.min.js"></script>
+
+  <style>
+    * {
+      box-sizing: border-box;
+    }
+
+    body {
+      margin: 0;
+      padding: 20px;
+      min-height: 100vh;
+      font-family: Arial, sans-serif;
+      background: linear-gradient(135deg, #102C3D, #176B59);
+      color: #173B56;
+      display: flex;
+      justify-content: center;
+      align-items: center;
+    }
+
+    .container {
+      width: 100%;
+      max-width: 480px;
+      background: white;
+      padding: 25px;
+      border-radius: 20px;
+      box-shadow: 0 15px 45px rgba(0,0,0,.2);
+    }
+
+    h2 {
+      text-align: center;
+      margin-top: 0;
+    }
+
+    .subtitle {
+      text-align: center;
+      color: #64748b;
+      font-size: 13px;
+      margin-bottom: 22px;
+    }
+
+    #qr-reader {
+      width: 100%;
+      overflow: hidden;
+      border-radius: 12px;
+    }
+
+    #scannerMessage {
+      margin: 18px 0;
+      padding: 13px;
+      background: #f1f5f9;
+      border-radius: 9px;
+      font-size: 13px;
+      text-align: center;
+      line-height: 1.5;
+    }
+
+    button {
+      width: 100%;
+      padding: 14px;
+      margin-top: 10px;
+      border: 0;
+      border-radius: 10px;
+      background: #176B59;
+      color: white;
+      font-weight: bold;
+      cursor: pointer;
+      font-size: 14px;
+    }
+
+    button:disabled {
+      opacity: .5;
+      cursor: not-allowed;
+    }
+
+    #stopButton {
+      background: #b91c1c;
+    }
+
+    #scanResult {
+      display: none;
+      padding: 14px;
+      margin-top: 15px;
+      border-radius: 10px;
+      background: #dcfce7;
+      overflow-wrap: anywhere;
+    }
+
+    .footer {
+      text-align: center;
+      color: #94a3b8;
+      font-size: 11px;
+      margin-top: 20px;
+    }
+  </style>
+</head>
+
+<body>
+
+  <main class="container">
+
+    <h2>SIMUJIAN QR</h2>
+
+    <p class="subtitle">
+      Scanner Absensi Siswa<br>
+      SMK Ma'arif NU Jatirejo
+    </p>
+
+    <div id="qr-reader"></div>
+
+    <div id="scannerMessage">
+      Scanner belum diaktifkan.
+    </div>
+
+    <button id="startButton" onclick="mulaiScanner()">
+      Aktifkan Kamera
+    </button>
+
+    <button id="stopButton" onclick="hentikanScanner()" disabled>
+      Hentikan Kamera
+    </button>
+
+    <div id="scanResult">
+      <strong>QR Berhasil Dibaca</strong>
+      <p id="qrValue"></p>
+    </div>
+
+    <div class="footer">
+      SIMUJIAN QR Scanner
+    </div>
+
+  </main>
+
+  <script>
+    let scanner = null;
+    let sedangMemindai = false;
+
+    const message = document.getElementById("scannerMessage");
+    const startButton = document.getElementById("startButton");
+    const stopButton = document.getElementById("stopButton");
+
+    async function mulaiScanner() {
+
+      if (sedangMemindai) return;
+
+      if (typeof Html5Qrcode === "undefined") {
+        message.textContent = "Library QR Scanner gagal dimuat.";
+        return;
+      }
+
+      if (!navigator.mediaDevices?.getUserMedia) {
+        message.textContent = "Browser tidak mendukung akses kamera.";
+        return;
+      }
+
+      startButton.disabled = true;
+      message.textContent = "Memeriksa kamera...";
+
+      try {
+
+        const cameras = await Html5Qrcode.getCameras();
+
+        if (!cameras || cameras.length === 0) {
+          throw new Error("Kamera tidak ditemukan.");
+        }
+
+        scanner = new Html5Qrcode("qr-reader");
+
+        await scanner.start(
+          cameras[0].id,
+          {
+            fps: 10,
+            qrbox: {
+              width: 250,
+              height: 250
+            }
+          },
+
+          async function(decodedText) {
+
+            if (!sedangMemindai) return;
+
+            document.getElementById("qrValue").textContent =
+              decodedText;
+
+            document.getElementById("scanResult").style.display =
+              "block";
+
+            message.textContent = "QR Code berhasil dibaca.";
+
+            await hentikanScanner();
+          },
+
+          function(errorMessage) {
+            // Kesalahan pembacaan biasa diabaikan.
+          }
+        );
+
+        sedangMemindai = true;
+        stopButton.disabled = false;
+        message.textContent =
+          "Kamera aktif. Arahkan QR Code ke kamera.";
+
+      } catch (error) {
+
+        console.error("Scanner error:", error);
+
+        message.textContent =
+          "Gagal mengaktifkan kamera: " +
+          (error.name || "Error") + " - " +
+          error.message;
+
+        startButton.disabled = false;
+      }
+    }
+
+    async function hentikanScanner() {
+
+      if (scanner && scanner.isScanning) {
+        try {
+          await scanner.stop();
+        } catch (error) {
+          console.error("Gagal menghentikan kamera:", error);
+        }
+      }
+
+      sedangMemindai = false;
+      startButton.disabled = false;
+      stopButton.disabled = true;
+    }
+  </script>
+
+</body>
+</html>
