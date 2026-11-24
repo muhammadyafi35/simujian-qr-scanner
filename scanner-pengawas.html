@@ -1,4 +1,3 @@
-
 <!DOCTYPE html>
 <html lang="id">
 <head>
@@ -53,22 +52,12 @@
       line-height: 1.6;
     }
 
-    .info {
-      background: #0f172a;
-      border-radius: 10px;
-      padding: 12px;
-      margin: 18px 0;
-      text-align: left;
-      font-size: 13px;
-      color: #cbd5e1;
-    }
-
     #reader {
       width: 100%;
       overflow: hidden;
       border-radius: 12px;
       background: #0f172a;
-      margin: 18px auto;
+      margin: 20px auto;
     }
 
     #status {
@@ -113,11 +102,6 @@
       color: white;
     }
 
-    button:disabled {
-      opacity: .5;
-      cursor: not-allowed;
-    }
-
     footer {
       margin-top: 22px;
       font-size: 11px;
@@ -139,26 +123,11 @@
     SMK MA'ARIF NU JATIREJO
   </p>
 
-  <div class="info">
-    <div>Jadwal: <strong id="jadwalInfo">Menunggu dashboard...</strong></div>
-    <div style="margin-top:8px">
-      Ruang: <strong id="ruangInfo">Menunggu dashboard...</strong>
-    </div>
-  </div>
-
   <div id="reader"></div>
 
   <div id="status">
-    Menunggu koneksi dengan Dashboard Panitia...
+    Menghubungkan ke Dashboard Panitia...
   </div>
-
-  <button
-    id="btnScanAgain"
-    class="btn-primary"
-    style="display:none"
-    onclick="mulaiScanner()">
-    SCAN BERIKUTNYA
-  </button>
 
   <button
     class="btn-secondary"
@@ -186,15 +155,9 @@ let scannerAktif = false;
 let sedangMemproses = false;
 let scannerSiap = false;
 
-let konteksPengawas = {
-  idJadwal: "",
-  idRuang: "",
-  namaRuang: ""
-};
-
 
 // ====================================
-// KOMUNIKASI DENGAN DASHBOARD
+// KIRIM PESAN KE DASHBOARD
 // ====================================
 
 function kirimKeDashboard(data) {
@@ -228,7 +191,7 @@ function tampilStatus(pesan, jenis = "") {
 
 
 // ====================================
-// KONEKSI DENGAN DASHBOARD
+// MENERIMA PESAN DARI DASHBOARD
 // ====================================
 
 window.addEventListener("message", function(event) {
@@ -237,40 +200,30 @@ window.addEventListener("message", function(event) {
     return;
   }
 
-  const data = event.data || {};
-
-  // INISIALISASI SCANNER
-  if (data.type === "SIMUJIAN_PENGAWAS_INIT") {
-
-    if (
-      !data.idJadwal ||
-      !data.idRuang
-    ) {
-      tampilStatus(
-        "Data jadwal dan ruang belum lengkap.",
-        "error"
-      );
-      return;
-    }
-
-    konteksPengawas = {
-      idJadwal: String(data.idJadwal),
-      idRuang: String(data.idRuang),
-      namaRuang: String(data.namaRuang || data.idRuang)
-    };
-
-    document.getElementById("jadwalInfo").textContent =
-      konteksPengawas.idJadwal;
-
-    document.getElementById("ruangInfo").textContent =
-      konteksPengawas.namaRuang;
-
-    if (!scannerSiap) {
-      mulaiScanner();
-    }
+  if (event.source !== window.opener) {
+    return;
   }
 
-  // HASIL SCAN DARI DASHBOARD
+  const data = event.data || {};
+
+  // Dashboard mengirim inisialisasi
+  if (
+    data.type === "SIMUJIAN_PENGAWAS_INIT"
+  ) {
+
+    if (scannerSiap) return;
+
+    scannerSiap = true;
+
+    tampilStatus(
+      "Dashboard terhubung. Mengaktifkan kamera...",
+      "warning"
+    );
+
+    mulaiScanner();
+  }
+
+  // Dashboard menerima hasil pemeriksaan QR
   if (
     data.type === "SIMUJIAN_PENGAWAS_SCAN_RESULT"
   ) {
@@ -282,23 +235,20 @@ window.addEventListener("message", function(event) {
     if (hasil.success) {
 
       tampilStatus(
-        hasil.message || "Absensi pengawas berhasil dicatat.",
+        hasil.message ||
+        "QR berhasil diterima. Silakan pilih jadwal dan ruang di Dashboard.",
         "success"
       );
-
-      document.getElementById("btnScanAgain").style.display =
-        "block";
 
     } else {
 
       tampilStatus(
-        hasil.message || "Pemindaian gagal.",
+        hasil.message || "QR tidak dapat diproses.",
         "error"
       );
 
-      document.getElementById("btnScanAgain").style.display =
-        "block";
     }
+
   }
 
 });
@@ -314,27 +264,15 @@ async function mulaiScanner() {
     return;
   }
 
-  if (
-    !konteksPengawas.idJadwal ||
-    !konteksPengawas.idRuang
-  ) {
-    tampilStatus(
-      "Belum menerima data jadwal dan ruang.",
-      "warning"
-    );
-    return;
-  }
-
   if (typeof Html5Qrcode === "undefined") {
+
     tampilStatus(
-      "Library scanner gagal dimuat. Periksa koneksi internet.",
+      "Library scanner gagal dimuat.",
       "error"
     );
+
     return;
   }
-
-  document.getElementById("btnScanAgain").style.display =
-    "none";
 
   try {
 
@@ -342,13 +280,10 @@ async function mulaiScanner() {
       html5QrCode = new Html5Qrcode("reader");
     }
 
-    tampilStatus(
-      "Mengaktifkan kamera...",
-      "warning"
-    );
-
     await html5QrCode.start(
+
       { facingMode: "environment" },
+
       {
         fps: 10,
         qrbox: {
@@ -356,14 +291,16 @@ async function mulaiScanner() {
           height: 250
         }
       },
+
       berhasilScan,
+
       function() {
-        // Abaikan pembacaan QR yang belum valid.
+        // Mengabaikan QR yang belum terbaca.
       }
+
     );
 
     scannerAktif = true;
-    scannerSiap = true;
 
     tampilStatus(
       "Kamera aktif. Arahkan ke QR Code guru pengawas.",
@@ -378,6 +315,7 @@ async function mulaiScanner() {
     );
 
   }
+
 }
 
 
@@ -387,21 +325,18 @@ async function mulaiScanner() {
 
 async function berhasilScan(decodedText) {
 
-  if (sedangMemproses) {
+  if (sedangMemproses) return;
+
+  const tokenQR = String(decodedText || "").trim();
+
+  if (!tokenQR || tokenQR.length > 200) {
     return;
   }
 
   sedangMemproses = true;
 
-  const tokenQR = String(decodedText || "").trim();
-
-  if (!tokenQR) {
-    sedangMemproses = false;
-    return;
-  }
-
   tampilStatus(
-    "QR berhasil dibaca. Mengirim data ke dashboard...",
+    "QR terbaca. Mengirim data ke Dashboard Panitia...",
     "warning"
   );
 
@@ -413,10 +348,11 @@ async function berhasilScan(decodedText) {
     }
 
     kirimKeDashboard({
+
       type: "SIMUJIAN_PENGAWAS_QR_DECODED",
-      tokenQR: tokenQR,
-      idJadwal: konteksPengawas.idJadwal,
-      idRuang: konteksPengawas.idRuang
+
+      tokenQR: tokenQR
+
     });
 
   } catch (error) {
@@ -442,12 +378,17 @@ async function tutupScanner() {
   try {
 
     if (html5QrCode && scannerAktif) {
+
       await html5QrCode.stop();
+
       scannerAktif = false;
+
     }
 
   } catch (error) {
-    console.log(error);
+
+    console.error(error);
+
   }
 
   if (window.opener && !window.opener.closed) {
@@ -464,7 +405,9 @@ async function tutupScanner() {
 window.addEventListener("load", function() {
 
   kirimKeDashboard({
+
     type: "SIMUJIAN_PENGAWAS_READY"
+
   });
 
 });
@@ -473,4 +416,3 @@ window.addEventListener("load", function() {
 
 </body>
 </html>
-
