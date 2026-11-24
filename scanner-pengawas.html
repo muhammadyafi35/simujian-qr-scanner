@@ -1,1 +1,476 @@
 
+<!DOCTYPE html>
+<html lang="id">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+
+  <title>Scanner QR Pengawas | SIMUJIAN</title>
+
+  <script src="https://unpkg.com/html5-qrcode"></script>
+
+  <style>
+    * {
+      box-sizing: border-box;
+    }
+
+    body {
+      margin: 0;
+      min-height: 100vh;
+      font-family: Arial, sans-serif;
+      background: #0f172a;
+      color: #f8fafc;
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      padding: 20px;
+    }
+
+    .container {
+      width: 100%;
+      max-width: 480px;
+      background: #1e293b;
+      border: 1px solid #334155;
+      border-radius: 18px;
+      padding: 24px;
+      text-align: center;
+      box-shadow: 0 15px 40px rgba(0,0,0,.3);
+    }
+
+    .logo {
+      font-size: 42px;
+      margin-bottom: 8px;
+    }
+
+    h2 {
+      margin: 8px 0;
+      font-size: 23px;
+    }
+
+    .subtitle {
+      color: #94a3b8;
+      font-size: 14px;
+      line-height: 1.6;
+    }
+
+    .info {
+      background: #0f172a;
+      border-radius: 10px;
+      padding: 12px;
+      margin: 18px 0;
+      text-align: left;
+      font-size: 13px;
+      color: #cbd5e1;
+    }
+
+    #reader {
+      width: 100%;
+      overflow: hidden;
+      border-radius: 12px;
+      background: #0f172a;
+      margin: 18px auto;
+    }
+
+    #status {
+      background: #0f172a;
+      border-radius: 10px;
+      padding: 14px;
+      margin-top: 16px;
+      font-size: 14px;
+      line-height: 1.5;
+    }
+
+    .success {
+      color: #4ade80;
+    }
+
+    .error {
+      color: #f87171;
+    }
+
+    .warning {
+      color: #facc15;
+    }
+
+    button {
+      width: 100%;
+      padding: 13px;
+      border: none;
+      border-radius: 10px;
+      font-weight: bold;
+      font-size: 14px;
+      cursor: pointer;
+      margin-top: 12px;
+    }
+
+    .btn-primary {
+      background: #16a34a;
+      color: white;
+    }
+
+    .btn-secondary {
+      background: #475569;
+      color: white;
+    }
+
+    button:disabled {
+      opacity: .5;
+      cursor: not-allowed;
+    }
+
+    footer {
+      margin-top: 22px;
+      font-size: 11px;
+      color: #64748b;
+    }
+  </style>
+</head>
+
+<body>
+
+<div class="container">
+
+  <div class="logo">📷</div>
+
+  <h2>Scanner QR Pengawas</h2>
+
+  <p class="subtitle">
+    SIMUJIAN QR<br>
+    SMK MA'ARIF NU JATIREJO
+  </p>
+
+  <div class="info">
+    <div>Jadwal: <strong id="jadwalInfo">Menunggu dashboard...</strong></div>
+    <div style="margin-top:8px">
+      Ruang: <strong id="ruangInfo">Menunggu dashboard...</strong>
+    </div>
+  </div>
+
+  <div id="reader"></div>
+
+  <div id="status">
+    Menunggu koneksi dengan Dashboard Panitia...
+  </div>
+
+  <button
+    id="btnScanAgain"
+    class="btn-primary"
+    style="display:none"
+    onclick="mulaiScanner()">
+    SCAN BERIKUTNYA
+  </button>
+
+  <button
+    class="btn-secondary"
+    onclick="tutupScanner()">
+    TUTUP SCANNER
+  </button>
+
+  <footer>
+    SIMUJIAN QR - Modul Absensi Pengawas
+  </footer>
+
+</div>
+
+<script>
+
+// ====================================
+// KONFIGURASI
+// ====================================
+
+const DASHBOARD_ORIGIN =
+  "https://script.google.com";
+
+let html5QrCode = null;
+let scannerAktif = false;
+let sedangMemproses = false;
+let scannerSiap = false;
+
+let konteksPengawas = {
+  idJadwal: "",
+  idRuang: "",
+  namaRuang: ""
+};
+
+
+// ====================================
+// KOMUNIKASI DENGAN DASHBOARD
+// ====================================
+
+function kirimKeDashboard(data) {
+
+  if (!window.opener || window.opener.closed) {
+    tampilStatus(
+      "Dashboard Panitia tidak ditemukan.",
+      "error"
+    );
+    return;
+  }
+
+  window.opener.postMessage(
+    data,
+    DASHBOARD_ORIGIN
+  );
+}
+
+
+// ====================================
+// TAMPILAN STATUS
+// ====================================
+
+function tampilStatus(pesan, jenis = "") {
+
+  const status = document.getElementById("status");
+
+  status.textContent = pesan;
+  status.className = jenis;
+}
+
+
+// ====================================
+// KONEKSI DENGAN DASHBOARD
+// ====================================
+
+window.addEventListener("message", function(event) {
+
+  if (event.origin !== DASHBOARD_ORIGIN) {
+    return;
+  }
+
+  const data = event.data || {};
+
+  // INISIALISASI SCANNER
+  if (data.type === "SIMUJIAN_PENGAWAS_INIT") {
+
+    if (
+      !data.idJadwal ||
+      !data.idRuang
+    ) {
+      tampilStatus(
+        "Data jadwal dan ruang belum lengkap.",
+        "error"
+      );
+      return;
+    }
+
+    konteksPengawas = {
+      idJadwal: String(data.idJadwal),
+      idRuang: String(data.idRuang),
+      namaRuang: String(data.namaRuang || data.idRuang)
+    };
+
+    document.getElementById("jadwalInfo").textContent =
+      konteksPengawas.idJadwal;
+
+    document.getElementById("ruangInfo").textContent =
+      konteksPengawas.namaRuang;
+
+    if (!scannerSiap) {
+      mulaiScanner();
+    }
+  }
+
+  // HASIL SCAN DARI DASHBOARD
+  if (
+    data.type === "SIMUJIAN_PENGAWAS_SCAN_RESULT"
+  ) {
+
+    sedangMemproses = false;
+
+    const hasil = data.result || {};
+
+    if (hasil.success) {
+
+      tampilStatus(
+        hasil.message || "Absensi pengawas berhasil dicatat.",
+        "success"
+      );
+
+      document.getElementById("btnScanAgain").style.display =
+        "block";
+
+    } else {
+
+      tampilStatus(
+        hasil.message || "Pemindaian gagal.",
+        "error"
+      );
+
+      document.getElementById("btnScanAgain").style.display =
+        "block";
+    }
+  }
+
+});
+
+
+// ====================================
+// MULAI SCANNER
+// ====================================
+
+async function mulaiScanner() {
+
+  if (scannerAktif || sedangMemproses) {
+    return;
+  }
+
+  if (
+    !konteksPengawas.idJadwal ||
+    !konteksPengawas.idRuang
+  ) {
+    tampilStatus(
+      "Belum menerima data jadwal dan ruang.",
+      "warning"
+    );
+    return;
+  }
+
+  if (typeof Html5Qrcode === "undefined") {
+    tampilStatus(
+      "Library scanner gagal dimuat. Periksa koneksi internet.",
+      "error"
+    );
+    return;
+  }
+
+  document.getElementById("btnScanAgain").style.display =
+    "none";
+
+  try {
+
+    if (!html5QrCode) {
+      html5QrCode = new Html5Qrcode("reader");
+    }
+
+    tampilStatus(
+      "Mengaktifkan kamera...",
+      "warning"
+    );
+
+    await html5QrCode.start(
+      { facingMode: "environment" },
+      {
+        fps: 10,
+        qrbox: {
+          width: 250,
+          height: 250
+        }
+      },
+      berhasilScan,
+      function() {
+        // Abaikan pembacaan QR yang belum valid.
+      }
+    );
+
+    scannerAktif = true;
+    scannerSiap = true;
+
+    tampilStatus(
+      "Kamera aktif. Arahkan ke QR Code guru pengawas.",
+      "success"
+    );
+
+  } catch (error) {
+
+    tampilStatus(
+      "Kamera gagal diaktifkan: " + error,
+      "error"
+    );
+
+  }
+}
+
+
+// ====================================
+// HASIL PEMINDAIAN QR
+// ====================================
+
+async function berhasilScan(decodedText) {
+
+  if (sedangMemproses) {
+    return;
+  }
+
+  sedangMemproses = true;
+
+  const tokenQR = String(decodedText || "").trim();
+
+  if (!tokenQR) {
+    sedangMemproses = false;
+    return;
+  }
+
+  tampilStatus(
+    "QR berhasil dibaca. Mengirim data ke dashboard...",
+    "warning"
+  );
+
+  try {
+
+    if (scannerAktif) {
+      await html5QrCode.stop();
+      scannerAktif = false;
+    }
+
+    kirimKeDashboard({
+      type: "SIMUJIAN_PENGAWAS_QR_DECODED",
+      tokenQR: tokenQR,
+      idJadwal: konteksPengawas.idJadwal,
+      idRuang: konteksPengawas.idRuang
+    });
+
+  } catch (error) {
+
+    sedangMemproses = false;
+
+    tampilStatus(
+      "Gagal menghentikan kamera: " + error,
+      "error"
+    );
+
+  }
+
+}
+
+
+// ====================================
+// TUTUP SCANNER
+// ====================================
+
+async function tutupScanner() {
+
+  try {
+
+    if (html5QrCode && scannerAktif) {
+      await html5QrCode.stop();
+      scannerAktif = false;
+    }
+
+  } catch (error) {
+    console.log(error);
+  }
+
+  if (window.opener && !window.opener.closed) {
+    window.close();
+  }
+
+}
+
+
+// ====================================
+// LAPORAN SCANNER SIAP
+// ====================================
+
+window.addEventListener("load", function() {
+
+  kirimKeDashboard({
+    type: "SIMUJIAN_PENGAWAS_READY"
+  });
+
+});
+
+</script>
+
+</body>
+</html>
+
