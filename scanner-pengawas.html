@@ -147,8 +147,7 @@
 // KONFIGURASI
 // ====================================
 
-let DASHBOARD_ORIGIN =
-  "https://script.google.com";
+let DASHBOARD_ORIGIN = "";
 
 let html5QrCode = null;
 let scannerAktif = false;
@@ -161,8 +160,9 @@ let scannerSiap = false;
 // ====================================
 
 function kirimKeDashboard(data) {
+
   if (!window.opener || window.opener.closed) {
-    tampilStatus("Dashboard Panitia tidak ditemukan.");
+    tampilStatus("Dashboard Panitia tidak ditemukan.", "error");
     return;
   }
 
@@ -190,22 +190,24 @@ function tampilStatus(pesan, jenis = "") {
 // MENERIMA PESAN DARI DASHBOARD
 // ====================================
 
+
 window.addEventListener("message", function(event) {
 
+  // Pastikan pesan berasal dari jendela yang membuka scanner.
   if (event.source !== window.opener) return;
-
-if (
-  DASHBOARD_ORIGIN &&
-  event.origin !== DASHBOARD_ORIGIN
-) return;
 
   const data = event.data || {};
 
-  // Dashboard mengirim inisialisasi
-  if (
-    data.type === "SIMUJIAN_PENGAWAS_INIT"
-  ) {
-DASHBOARD_ORIGIN = event.origin;
+  // Terima inisialisasi pertama dari Dashboard.
+  if (data.type === "SIMUJIAN_PENGAWAS_INIT") {
+
+    if (!DASHBOARD_ORIGIN) {
+      DASHBOARD_ORIGIN = event.origin;
+    }
+
+    // Setelah origin dikenali, tolak origin lain.
+    if (event.origin !== DASHBOARD_ORIGIN) return;
+
     if (scannerSiap) return;
 
     scannerSiap = true;
@@ -216,12 +218,16 @@ DASHBOARD_ORIGIN = event.origin;
     );
 
     mulaiScanner();
+    return;
   }
 
-  // Dashboard menerima hasil pemeriksaan QR
+  // Pesan berikutnya harus berasal dari origin Dashboard.
   if (
-    data.type === "SIMUJIAN_PENGAWAS_SCAN_RESULT"
-  ) {
+    !DASHBOARD_ORIGIN ||
+    event.origin !== DASHBOARD_ORIGIN
+  ) return;
+
+  if (data.type === "SIMUJIAN_PENGAWAS_SCAN_RESULT") {
 
     sedangMemproses = false;
 
@@ -243,10 +249,10 @@ DASHBOARD_ORIGIN = event.origin;
       );
 
     }
-
   }
 
 });
+
 
 
 // ====================================
